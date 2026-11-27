@@ -3,6 +3,7 @@ import type { HardhatRuntimeEnvironment } from 'hardhat/types/hre'
 import { deployMastercopy, readMastercopies } from '@gnosis-guild/zodiac-core'
 
 import { createEIP1193 } from './create-EIP1193.js'
+import { ensureMastercopyDeployed } from './ensure-mastercopy-deployed.js'
 
 interface DeployMastercopyTaskArguments {
   contractVersion: string
@@ -38,6 +39,12 @@ export default async function (
         )
       },
     })
+    await ensureMastercopyDeployed(
+      provider,
+      address,
+      contractName,
+      contractVersion
+    )
     if (noop) {
       console.log(
         `🔄 ${contractName}@${contractVersion}: Already deployed at ${address}`
