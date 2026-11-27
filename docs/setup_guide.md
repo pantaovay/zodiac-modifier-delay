@@ -1,78 +1,96 @@
 # Delay Modifier Setup Guide
 
-This guide shows how to setup a Delay Modifier with a Gnosis Safe on the Rinkeby testnetwork.
-
-The Delay Modifier belongs to the [Zodiac](https://github.com/gnosis/zodiac) collection of tools. If you have any questions about Zodiac, join the [Gnosis Guild Discord](https://discord.gg/wwmBWTgyEq). Follow [@GnosisGuild](https://twitter.com/gnosisguild) on Twitter for updates.
+Deploy a Delay proxy for your [Safe](https://app.safe.global/) using Zodiac Core's [`deployProxy`](https://github.com/gnosisguild/zodiac-core#deployproxy). The proxy is your Delay instance; the mastercopy is the shared implementation it points to. If the mastercopy already exists on your network, you do not need to deploy or verify it again.
 
 ## Prerequisites
 
-To start the process you need to create a Safe on the Rinkeby test network (e.g. via https://rinkeby.gnosis-safe.io). This Safe will represent the DAO and hold all the assets (e.g. tokens and collectibles). A Safe transaction is required to setup the Delay Modifier.
+Use Node.js 22.13 or newer on a supported even-numbered release and Yarn Classic. From the repository root, install the locked dependencies:
 
-For the hardhat tasks to work the environment needs to be properly configured. See the [sample env file](../.env.sample) for more information.
-
-## Deploying the modifier
-
-The modifier has five variables which must be set:
-
-- `Owner`: Address that can call setter functions
-- `Avatar`: Address of the DAO (e.g. a Gnosis Safe)
-- `Target`: Address on which the module will call `execModuleTransaction()`
-- `Cooldown`: Amount in seconds required before the transaction can be executed
-- `Expiration`: Duration that a transaction is valid in seconds (or 0 if valid forever) after the cooldown
-
-Hardhat tasks can be used to deploy a Delay Modifier instance. There are two different ways to deploy the modifier, the first one is through a normal deployment, passing arguments to the constructor (without the `proxied` flag), or, deploy the modifier through a [Minimal Proxy Factory](https://eips.ethereum.org/EIPS/eip-1167) to save on gas costs (with the `proxied` flag) - The master copy and factory address can be found in the [zodiac repository](https://github.com/gnosis/zodiac/blob/master/src/factory/constants.ts), these are the addresses that are going to be used when deploying the module through factory.
-
-These setup tasks require the following parameters (also mentioned above):
-
-- `Owner`: Address that can call setter functions
-- `Avatar`: Address of the DAO (e.g. a Gnosis Safe)
-- `Target`: Address on which the module will call `execModuleTransaction()` (this is the contract that execute the transactions))
-- `Cooldown` (Optional): By default, this is set to 24 hours
-- `Expiration` (Optional): By default, this is set to 7 days
-
-For more information run `yarn hardhat setup --help`.
-
-An example for this on Rinkeby would be:
-`yarn hardhat --network rinkeby setup --owner <owner_address> --avatar <avatar_address> --target <target_address> `
-
-or this to deploy using the proxy factory:
-
-`yarn hardhat --network rinkeby setup ---owner <owner_address> --avatar <avatar_address> --target <target_address> --proxied true`
-
-This should return the address of the deployed Delay Modifier. For this guide we assume this to be `0x4242424242424242424242424242424242424242`.
-
-Once the modifier has been deployed, you should verify the source code. (Note: If you used the factory deployment, the contract should be already verified.) If you use a network that is Etherscan compatible, and you configure the `ETHERSCAN_API_KEY` in your environment, you can use the provided hardhat task to do this.
-
-An example for this on Rinkeby would be:
-`yarn hardhat --network rinkeby verifyEtherscan --modifier 0x4242424242424242424242424242424242424242 --owner <owner_address> --avatar <avatar_address>`
-
-## Enabling the modifier
-
-To allow the Delay Modifier to actually execute transactions, you must enable it on the Gnosis Safe to which it is connected. For this, you can use the Zodiac Safe app in the [Gnosis Safe UI](https://gnosis-safe.io/app/) to add a "custom module".
-
-## Enabling modules on the Delay Modifier
-
-The Delay Modifier implements the same interface as the Gnosis Safe for enabling and disabling modules, along with enqueueing transactions.
-
-Before an address can enqueue transactions, it will need to be added as a module to the Delay Modifier. To enable an address as a module added to the Delay Modifier, follow the [adding a module](https://help.gnosis-safe.io/en/articles/4934427-add-a-module) guide, replacing the Gnosis Safe address with the Delay Modifier address.
-
-## Monitoring your modifier
-
-For the Delay Modifier to be effective, it is important to know which items are in queue. To make sure that all the involved stakeholders can react in a timely manner, the events emitted by the Delay Modifier contract should be monitored. Each time a new transaction is added, the contract will emit a `TransactionAdded` event with the following parameters:
-
-```
-event TransactionAdded(
-  uint indexed queueNonce, // the transactions place in the queue
-  bytes32 indexed txHash, // the hash of the transaction
-  address to, // the to address of the transaction
-  uint256 value, // the ETH value of the transaction, in wei
-  bytes data, // the encoded transaction data
-  Operation operation // (0) call or (1) delegate call
-);
+```sh
+yarn install --frozen-lockfile
 ```
 
-There are different services available for this such as the [OpenZepplin Defender Sentinel](https://docs.openzeppelin.com/defender/sentinel).
+Choose a network listed in [the Hardhat config](../hardhat.config.ts), such as Sepolia, and create a Safe on that network. In a local `.env` file, set `SAFE_ADDRESS` to that Safe's address and configure a funded deployment account using `PK` (a private key) or `MNEMONIC`. For Sepolia, also set `INFURA_KEY`. See the [sample env file](../.env.sample). Never commit your `.env` file or use the default test mnemonic on a public network.
 
-## Deploy a master copy
+## Deploy a Delay instance
 
-The master copy contracts can be deployed through the `yarn deploy` command. Note that this only should be done if the Delay Modifier contracts are updated. The ones referred to on the [Zodiac repository](https://github.com/gnosis/zodiac/blob/master/src/factory/constants.ts) should be used.
+The example uses the version `2.0.0` address from [the mastercopy registry](../mastercopies.json). Zodiac Core uses its canonical Zodiac Module Proxy Factory; both the factory and your chosen mastercopy must have code on the selected network. Set `DELAY_NETWORK` in your shell to override the default of `sepolia`.
+
+This example uses the Safe as the owner, avatar and target: the owner can change Delay settings and enable modules, the avatar is the account whose assets the modules act on, and the target is the contract Delay calls to execute transactions. The cooldown and expiration are in seconds: here, transactions wait one day and are executable for the next seven days. Set expiration to `0` for no expiry, or to at least `60` seconds.
+
+Save this example as `deploy-delay.mjs` in the repository root:
+
+```js
+import { deployProxy, encodeDeployProxy, readMastercopies } from '@gnosis-guild/zodiac-core'
+import hre from 'hardhat'
+
+const { networkName, ethers, provider: rpc } = await hre.network.create()
+if (networkName !== 'localhost' && !process.env.PK && !process.env.MNEMONIC) {
+  throw new Error('Set PK or MNEMONIC for your funded deployment account')
+}
+if (!process.env.SAFE_ADDRESS) throw new Error('Set SAFE_ADDRESS')
+
+const [signer] = await ethers.getSigners()
+const safe = ethers.getAddress(process.env.SAFE_ADDRESS)
+const [{ address: mastercopy }] = readMastercopies({
+  contractName: 'Delay',
+  contractVersion: '2.0.0',
+})
+
+const deployment = {
+  mastercopy,
+  setupArgs: {
+    types: ['address', 'address', 'address', 'uint256', 'uint256'],
+    values: [safe, safe, safe, 86_400n, 604_800n], // owner, avatar, target, cooldown, expiration
+  },
+  saltNonce: 1n,
+}
+const { to: factory } = encodeDeployProxy(deployment)
+for (const address of [safe, mastercopy, factory]) {
+  if (await ethers.provider.getCode(address) === '0x') {
+    throw new Error(`No contract at ${address} on ${networkName}`)
+  }
+}
+
+const provider = {
+  async request({ method, params }) {
+    if (method === 'eth_sendTransaction') {
+      const { hash } = await signer.sendTransaction(params[0])
+      return hash
+    }
+    return rpc.request({ method, params })
+  },
+}
+
+const { address, noop } = await deployProxy({ ...deployment, provider })
+if (await ethers.provider.getCode(address) === '0x') {
+  throw new Error(`Proxy deployment failed at ${address}`)
+}
+console.log(`Delay proxy ${noop ? 'already exists' : 'deployed'} at ${address}`)
+```
+
+Run it with Hardhat:
+
+```sh
+yarn hardhat run deploy-delay.mjs --network "${DELAY_NETWORK:-sepolia}"
+```
+
+Save the printed **proxy** address. The mastercopy, setup values and `saltNonce` determine that address. Repeating the same deployment on the same network reports the existing proxy; use a different integer salt nonce to deploy another instance with the same settings.
+
+## Connect the Delay instance to your Safe
+
+1. In the Safe UI, propose and execute a Safe transaction calling `enableModule(address)` on the Safe with the Delay **proxy** address. This authorizes Delay to execute transactions through the Safe.
+2. Have the Delay owner (the Safe in this example) execute `enableModule(address)` on the **Delay proxy** with the address of the upstream module that should enqueue transactions. If that module has a configurable target, point it at the Delay proxy rather than directly at the Safe so that it uses the queue.
+
+Monitor the proxy's `TransactionAdded` events so stakeholders can react to queued transactions. Each event includes the queue nonce, transaction hash, destination, value, calldata and operation.
+
+## Deploy and verify a mastercopy (maintainers only)
+
+Use these tasks to publish a released implementation from [the mastercopy registry](../mastercopies.json) on a network that does not yet have it, not to create an instance. The registry's singleton factory must already be deployed on that network. Set `DELAY_NETWORK` in your shell to select a network other than Sepolia. For verification, set `ETHERSCAN_API_KEY` in `.env` and use an explorer supported by the task.
+
+```sh
+yarn deploy:mastercopy "${DELAY_NETWORK:-sepolia}" --contract-version 2.0.0
+yarn verify:mastercopy "${DELAY_NETWORK:-sepolia}" --contract-version 2.0.0
+```
+
+The singular tasks default to the latest registered version if you omit the version flag. The `deploy:mastercopies` and `verify:mastercopies` tasks operate on all registered versions.
