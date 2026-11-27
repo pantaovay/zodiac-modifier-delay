@@ -1,8 +1,9 @@
 import type { HardhatRuntimeEnvironment } from 'hardhat/types/hre'
 
-import { deployMastercopy, readMastercopies } from '@gnosis-guild/zodiac-core'
+import { deployMastercopy } from '@gnosis-guild/zodiac-core'
 
 import { createEIP1193 } from './create-EIP1193.js'
+import { readMastercopiesForVersion } from './read-mastercopies-for-version.js'
 
 interface DeployMastercopyTaskArguments {
   contractVersion: string
@@ -12,12 +13,13 @@ export default async function (
   { contractVersion }: DeployMastercopyTaskArguments,
   hre: HardhatRuntimeEnvironment
 ) {
+  const mastercopies = readMastercopiesForVersion(contractVersion)
   const { ethers, provider: hardhatProvider } = await hre.network.create()
   const [signer] = await ethers.getSigners()
   const { chainId } = await ethers.provider.getNetwork()
   const provider = createEIP1193(Number(chainId), hardhatProvider, signer)
 
-  for (const mastercopy of readMastercopies({ contractVersion })) {
+  for (const mastercopy of mastercopies) {
     const {
       contractName,
       contractVersion,
