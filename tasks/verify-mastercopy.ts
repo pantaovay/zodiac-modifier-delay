@@ -1,8 +1,9 @@
 import type { HardhatRuntimeEnvironment } from 'hardhat/types/hre'
 
-import { readMastercopies, verifyMastercopy } from '@gnosis-guild/zodiac-core'
+import { verifyMastercopy } from '@gnosis-guild/zodiac-core'
 
 import { getBlockExplorerApiUrl } from './block-explorers.js'
+import { readMastercopiesForVersion } from './read-mastercopies-for-version.js'
 
 interface VerifyMastercopyTaskArguments {
   contractVersion: string
@@ -12,11 +13,12 @@ export default async function (
   { contractVersion }: VerifyMastercopyTaskArguments,
   hre: HardhatRuntimeEnvironment
 ) {
+  const artifacts = readMastercopiesForVersion(contractVersion)
   const apiKey = process.env.ETHERSCAN_API_KEY ?? ''
   const { ethers, networkName } = await hre.network.create()
   const { chainId } = await ethers.provider.getNetwork()
 
-  for (const artifact of readMastercopies({ contractVersion })) {
+  for (const artifact of artifacts) {
     const { noop } = await verifyMastercopy({
       artifact,
       chainId: Number(chainId),
