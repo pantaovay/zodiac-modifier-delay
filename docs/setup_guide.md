@@ -94,5 +94,3 @@ yarn verify:mastercopy "${DELAY_NETWORK:-sepolia}" --contract-version 2.0.0
 ```
 
 The singular tasks default to the latest registered version if you omit the version flag. The `deploy:mastercopies` and `verify:mastercopies` tasks operate on all registered versions.
-
-If verification of `2.0.0` fails with a source-path error, check the registry entry: the task submits `contracts/Delay.sol:Delay`, but the stored compiler input uses `project/contracts/Delay.sol`.
